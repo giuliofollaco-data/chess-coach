@@ -5,7 +5,7 @@ import pygame
 import requests
 
 # --- CONFIGURATION & API CHESS.COM ---
-USERNAME = "giugiugiulio"  # Remplace par ton pseudo Chess.com
+USERNAME = "giugiugiulio"
 HEADERS = {"User-Agent": "ChessCoachApp/1.0 (contact: giuliofollaco@gmail.com)"}
 
 # Dimensions de la fenêtre
@@ -42,7 +42,6 @@ def get_games_for_month(username, year, month):
 
 
 def get_recent_games(username, days=30):
-    """Télécharge l'historique global (par défaut 30 jours pour servir de base de données locale)"""
     now = datetime.datetime.now()
     all_games = []
     months_to_check = {now.month: now.year}
@@ -57,7 +56,6 @@ def get_recent_games(username, days=30):
 
 # --- FILTRE LOCAL & STATS ---
 def filter_games_by_days(games, days):
-    """Filtre instantanément les parties pré-chargées selon la sélection de l'utilisateur"""
     now = datetime.datetime.now()
     cutoff_timestamp = (now - datetime.timedelta(days=days)).timestamp()
     return [g for g in games if g.get("end_time", 0) >= cutoff_timestamp]
@@ -192,16 +190,13 @@ def draw_pieces(screen, board, pieces_images, dragged_piece=None, dragged_pos=No
             screen.blit(text_surface, (dragged_pos[0] - 20, dragged_pos[1] - 30))
 
 
-# --- PANNEAU LATÉRAL ET BOUTONS TEMPCO ---
-# Définition des rectangles de collision pour nos 3 boutons (X, Y, Largeur, Hauteur)
+# --- PANNEAU LATÉRAL ---
 BTN_1J = pygame.Rect(BOARD_WIDTH + 15, 55, 65, 30)
 BTN_7J = pygame.Rect(BOARD_WIDTH + 90, 55, 65, 30)
 BTN_30J = pygame.Rect(BOARD_WIDTH + 165, 55, 65, 30)
 
 
 def draw_side_panel(screen, stats, selected_days):
-    """Dessine le panneau, les boutons de filtres et les statistiques obtenues"""
-    # Fond
     pygame.draw.rect(
         screen,
         pygame.Color("#262522"),
@@ -219,11 +214,9 @@ def draw_side_panel(screen, stats, selected_days):
     btn_font = pygame.font.SysFont("Arial", 14, bold=True)
     text_font = pygame.font.SysFont("Arial", 15)
 
-    # Titre
     title_surface = title_font.render("COACH - PÉRIODE", True, pygame.Color("#ffffff"))
     screen.blit(title_surface, (BOARD_WIDTH + 20, 20))
 
-    # Dessin des Boutons Temporels (Changement de couleur si actif)
     buttons = [(BTN_1J, "1 J", 1), (BTN_7J, "7 J", 7), (BTN_30J, "30 J", 30)]
     for rect, label, days in buttons:
         is_active = selected_days == days
@@ -232,57 +225,61 @@ def draw_side_panel(screen, stats, selected_days):
 
         pygame.draw.rect(screen, bg_color, rect, border_radius=4)
         btn_text = btn_font.render(label, True, text_color)
-        # Centrage du texte dans le bouton
         text_rect = btn_text.get_rect(center=rect.center)
         screen.blit(btn_text, text_rect)
 
-    # Affichage des Statistiques (décalées vers le bas à y=110 pour laisser de la place)
+    # Statistiques des coups
     y_offset = 120
     if not stats:
         no_data = text_font.render(
             "Aucune partie trouvée", True, pygame.Color("#989795")
         )
         screen.blit(no_data, (BOARD_WIDTH + 20, y_offset))
-        return
+    else:
+        for i, (move_uci, count, pct) in enumerate(stats):
+            if i >= 10:
+                break
+            stat_text = f"{i+1}. Coup:  {move_uci}"
+            value_text = f"{count}x  ({pct:.1f}%)"
 
-    for i, (move_uci, count, pct) in enumerate(stats):
-        if i >= 11:  # Sécurité hauteur max écran
-            break
-        stat_text = f"{i+1}. Coup:  {move_uci}"
-        value_text = f"{count}x  ({pct:.1f}%)"
+            move_surf = text_font.render(stat_text, True, pygame.Color("#ffffff"))
+            val_surf = text_font.render(
+                value_text,
+                True,
+                pygame.Color("#81b64c") if i == 0 else pygame.Color("#989795"),
+            )
 
-        move_surf = text_font.render(stat_text, True, pygame.Color("#ffffff"))
-        val_surf = text_font.render(
-            value_text,
-            True,
-            pygame.Color("#81b64c") if i == 0 else pygame.Color("#989795"),
-        )
+            screen.blit(move_surf, (BOARD_WIDTH + 20, y_offset))
+            screen.blit(val_surf, (BOARD_WIDTH + 140, y_offset))
+            y_offset += 38
 
-        screen.blit(move_surf, (BOARD_WIDTH + 20, y_offset))
-        screen.blit(val_surf, (BOARD_WIDTH + 140, y_offset))
-        y_offset += 38
+    help_font = pygame.font.SysFont("Arial", 13, italic=True)
+    help_surf = help_font.render(
+        "Navigation : Flèches ◄  ►", True, pygame.Color("#7d7c7a")
+    )
+    screen.blit(help_surf, (BOARD_WIDTH + 45, BOARD_HEIGHT - 35))
 
 
 # --- APPLICATION PRINCIPALE ---
 def main():
-    print(f"Téléchargement de la base de données (30 jours) pour {USERNAME}...")
+    print(f"Téléchargement de la base de données pour {USERNAME}...")
     all_loaded_games = get_recent_games(USERNAME, days=30)
-    print(f"{len(all_loaded_games)} parties synchronisées localement.")
+    print(f"{len(all_loaded_games)} parties chargées.")
 
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Coach Échecs - Filtre Temporel Interactif")
+    pygame.display.set_caption("Coach Échecs - Historique Temporel")
 
     board_img, pieces_images = load_assets()
     board = chess.Board()
 
     selected_square = None
     dragged_pos = None
+    selected_days = 7
 
-    # États de configuration par défaut
-    selected_days = 7  # On démarre l'affichage sur la dernière semaine
+    all_moves = []
+    move_index = 0
 
-    # Calcul initial des stats filtrées
     filtered_games = filter_games_by_days(all_loaded_games, selected_days)
     current_stats = get_opponent_move_stats(filtered_games, board.fen())
 
@@ -292,18 +289,40 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
 
+            # GESTION DES TOUCHES CLAVIER CORRIGÉE
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_LEFT:
+                    if move_index > 0:
+                        move_index -= 1
+                        # Reconstruction complète et propre depuis l'index 0
+                        board = chess.Board()
+                        for m in all_moves[:move_index]:
+                            board.push(m)
+
+                        current_stats = get_opponent_move_stats(
+                            filtered_games, board.fen()
+                        )
+
+                elif event.key == pygame.K_RIGHT:
+                    if move_index < len(all_moves):
+                        move_index += 1
+                        # Même méthode ici : reconstruction propre du futur
+                        board = chess.Board()
+                        for m in all_moves[:move_index]:
+                            board.push(m)
+
+                        current_stats = get_opponent_move_stats(
+                            filtered_games, board.fen()
+                        )
+
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 pos = pygame.mouse.get_pos()
-
-                # CLIC SUR L'ÉCHIQUIER
                 if pos[0] < BOARD_WIDTH:
                     col = pos[0] // SQ_SIZE
                     row = 7 - (pos[1] // SQ_SIZE)
                     square = chess.square(col, row)
                     if board.piece_at(square):
                         selected_square = square
-
-                # CLIC SUR LE PANNEAU DE STATS (Gestion des Boutons)
                 else:
                     changed = False
                     if BTN_1J.collidepoint(pos) and selected_days != 1:
@@ -317,7 +336,6 @@ def main():
                         changed = True
 
                     if changed:
-                        # Recalcul instantané sans requête réseau !
                         filtered_games = filter_games_by_days(
                             all_loaded_games, selected_days
                         )
@@ -344,11 +362,13 @@ def main():
                         move.promotion = chess.QUEEN
 
                     if move in board.legal_moves:
+                        if move_index < len(all_moves):
+                            all_moves = all_moves[:move_index]
+
+                        all_moves.append(move)
                         board.push(move)
-                        # Recalcul des stats pour la nouvelle position selon le filtre temporel actif
-                        filtered_games = filter_games_by_days(
-                            all_loaded_games, selected_days
-                        )
+                        move_index += 1
+
                         current_stats = get_opponent_move_stats(
                             filtered_games, board.fen()
                         )
