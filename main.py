@@ -5,10 +5,21 @@ import chess
 import chess.pgn  # Parser officiel ultra-rapide
 import pygame
 import requests
+import json
+
+# --- CHARGEMENT DE LA CONFIGURATION ---
+try:
+    with open("config.json", "r", encoding="utf-8") as file:
+        config = json.load(file)
+except FileNotFoundError:
+    print("Erreur : Le fichier config.json est introuvable.")
+    config = {"username": "PseudoParDefaut", "email": "contact@example.com"}
 
 # --- CONFIGURATION & API CHESS.COM ---
-USERNAME = "giugiugiulio"
-HEADERS = {"User-Agent": "ChessCoachApp/1.0 (contact: giuliofollaco@gmail.com)"}
+USERNAME = config.get("username")
+EMAIL = config.get("email")
+
+HEADERS = {"User-Agent": f"ChessCoachApp/1.0 (contact: {EMAIL})"}
 
 # Dimensions de la fenêtre
 BOARD_WIDTH, BOARD_HEIGHT = 600, 600
@@ -261,7 +272,7 @@ def draw_side_panel(screen, stats, selected_days):
         screen.blit(btn_text, btn_text.get_rect(center=rect.center))
 
     pygame.draw.rect(screen, pygame.Color("#312e2b"), BTN_FLIP, border_radius=4)
-    flip_text = btn_font.render("Tourner l'échiquier ⟳", True, pygame.Color("#ffffff"))
+    flip_text = btn_font.render("Tourner l'échiquier", True, pygame.Color("#ffffff"))
     screen.blit(flip_text, flip_text.get_rect(center=BTN_FLIP.center))
 
     y_offset = 150
