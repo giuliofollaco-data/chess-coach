@@ -15,7 +15,10 @@ WIDTH = BOARD_WIDTH + SIDE_PANEL_WIDTH
 HEIGHT = BOARD_HEIGHT
 SQ_SIZE = BOARD_WIDTH // 8
 
-COLORS = [pygame.Color("#eeeed2"), pygame.Color("#769656")]
+COLORS = [
+    pygame.Color("#eeeed2"),
+    pygame.Color("#769656"),
+]  # [Cases Claire, Cases Sombres]
 PIECE_TO_NAME = {
     "P": "wp",
     "R": "wr",
@@ -34,15 +37,7 @@ PIECE_TO_NAME = {
 
 # --- TRADUCTION DE LA NOTATION EN FRANÇAIS ---
 def to_french_san(eng_san_str):
-    """Traduit la notation algébrique anglaise (Nf3, Bxe4) en notation officielle française (Cf3, Fxe4)"""
-    mapping = {
-        "K": "R",  # King -> Roi
-        "Q": "D",  # Queen -> Dame
-        "R": "T",  # Rook -> Tour
-        "B": "F",  # Bishop -> Fou
-        "N": "C",  # Knight -> Cavalier
-    }
-    # On ne traduit que les lettres majuscules (les pièces), les minuscules restent les cases (a-h)
+    mapping = {"K": "R", "Q": "D", "R": "T", "B": "F", "N": "C"}
     return "".join(mapping.get(char, char) for char in eng_san_str)
 
 
@@ -78,10 +73,6 @@ def filter_games_by_days(games, days):
 def get_opponent_move_stats(games, current_fen):
     board_target = chess.Board(current_fen)
     target_key = " ".join(board_target.fen().split()[:4])
-
-    # On détermine quelle couleur doit jouer dans la position actuelle étudiée
-    # Si board_target.turn == chess.WHITE, on cherche le coup des Blancs.
-    # Si board_target.turn == chess.BLACK, on cherche le coup des Noirs.
     target_turn = board_target.turn
 
     move_counts = {}
@@ -91,8 +82,7 @@ def get_opponent_move_stats(games, current_fen):
         if "pgn" not in game:
             continue
 
-        # --- FILTRE ADVERSAIRE ---
-        # On regarde la couleur de l'utilisateur "giugiugiulio" dans cette partie
+        # Filtre exclusif pour n'avoir que les coups de tes adversaires
         is_user_white = (
             game.get("white", {}).get("username", "").lower() == USERNAME.lower()
         )
@@ -100,13 +90,10 @@ def get_opponent_move_stats(games, current_fen):
             game.get("black", {}).get("username", "").lower() == USERNAME.lower()
         )
 
-        # Si le trait (le joueur qui doit jouer) correspond à notre propre couleur,
-        # alors ce n'est pas un coup adverse ! On passe à la partie suivante.
         if target_turn == chess.WHITE and is_user_white:
             continue
         if target_turn == chess.BLACK and is_user_black:
             continue
-        # -------------------------
 
         pgn_text = game["pgn"]
         board = chess.Board()
@@ -167,21 +154,33 @@ def load_assets():
     return board_img, pieces_images
 
 
-def draw_board(screen, board_img):
+def draw_board(screen, board_img, board_flipped):
+    """Dessine l'échiquier en gérant la rotation à 180°"""
     if board_img:
-        screen.blit(board_img, (0, 0))
+        if board_flipped:
+            # Effectue une rotation de l'image de texture si l'échiquier est retourné
+            screen.blit(pygame.transform.rotate(board_img, 180), (0, 0))
+        else:
+            screen.blit(board_img, (0, 0))
     else:
-        for r in range(8):
-            for c in range(8):
-                color = COLORS[((r + c) % 2)]
-                pygame.draw.rect(
-                    screen,
-                    color,
-                    pygame.Rect(c * SQ_SIZE, r * SQ_SIZE, SQ_SIZE, SQ_SIZE),
-                )
+        # Fallback de dessin manuel si l'image est absente
+        for square in chess.SQUARES:
+            file = chess.square_file(square)
+            rank = chess.square_rank(square)
+            col = 7 - file if board_flipped else file
+            row = rank if board_flipped else 7 - rank
+            color = COLORS[0] if chess.square_light(square) else COLORS[1]
+            pygame.draw.rect(
+                screen,
+                color,
+                pygame.Rect(col * SQ_SIZE, row * SQ_SIZE, SQ_SIZE, SQ_SIZE),
+            )
 
 
-def draw_pieces(screen, board, pieces_images, dragged_piece=None, dragged_pos=None):
+def draw_pieces(
+    screen, board, pieces_images, board_flipped, dragged_piece=None, dragged_pos=None
+):
+    """Affiche les pièces sur l'échiquier selon le sens de lecture choisi"""
     fallback_symbols = {
         "P": "♙",
         "R": "♖",
@@ -206,7 +205,14 @@ def draw_pieces(screen, board, pieces_images, dragged_piece=None, dragged_pos=No
                 continue
 
             col = chess.square_file(square)
-            row = 7 - chess.square_rank(square)
+            row = chess.square_rank(square)
+
+            # Inversion mathématique des coordonnées si board_flipped est actif
+            if board_flipped:
+                col = 7 - col
+            else:
+                row = 7 - row
+
             x, y = col * SQ_SIZE, row * SQ_SIZE
 
             img = pieces_images.get(symbol)
@@ -216,6 +222,7 @@ def draw_pieces(screen, board, pieces_images, dragged_piece=None, dragged_pos=No
                 text_surface = font.render(fallback_symbols[symbol], True, (0, 0, 0))
                 screen.blit(text_surface, (x + 15, y + 5))
 
+    # Dessin de la pièce tenue au curseur
     if dragged_piece and dragged_pos:
         piece = board.piece_at(dragged_piece)
         symbol = piece.symbol()
@@ -233,6 +240,8 @@ def draw_pieces(screen, board, pieces_images, dragged_piece=None, dragged_pos=No
 BTN_1J = pygame.Rect(BOARD_WIDTH + 15, 55, 65, 30)
 BTN_7J = pygame.Rect(BOARD_WIDTH + 90, 55, 65, 30)
 BTN_30J = pygame.Rect(BOARD_WIDTH + 165, 55, 65, 30)
+# Nouveau bouton pour pivoter l'échiquier
+BTN_FLIP = pygame.Rect(BOARD_WIDTH + 15, 95, 215, 30)
 
 
 def draw_side_panel(screen, stats, selected_days):
@@ -253,22 +262,26 @@ def draw_side_panel(screen, stats, selected_days):
     btn_font = pygame.font.SysFont("Arial", 14, bold=True)
     text_font = pygame.font.SysFont("Arial", 15, bold=True)
 
-    title_surface = title_font.render("COACH - PÉRIODE", True, pygame.Color("#ffffff"))
+    title_surface = title_font.render("COACH - OPTIONS", True, pygame.Color("#ffffff"))
     screen.blit(title_surface, (BOARD_WIDTH + 20, 20))
 
+    # Dessin filtres temporels
     buttons = [(BTN_1J, "1 J", 1), (BTN_7J, "7 J", 7), (BTN_30J, "30 J", 30)]
     for rect, label, days in buttons:
         is_active = selected_days == days
         bg_color = pygame.Color("#81b64c") if is_active else pygame.Color("#312e2b")
         text_color = pygame.Color("#ffffff") if is_active else pygame.Color("#989795")
-
         pygame.draw.rect(screen, bg_color, rect, border_radius=4)
         btn_text = btn_font.render(label, True, text_color)
-        text_rect = btn_text.get_rect(center=rect.center)
-        screen.blit(btn_text, text_rect)
+        screen.blit(btn_text, btn_text.get_rect(center=rect.center))
 
-    # Statistiques des coups (Affichage nettoyé en SAN français)
-    y_offset = 120
+    # Dessin du bouton Flip Board
+    pygame.draw.rect(screen, pygame.Color("#312e2b"), BTN_FLIP, border_radius=4)
+    flip_text = btn_font.render("Tourner l'échiquier", True, pygame.Color("#ffffff"))
+    screen.blit(flip_text, flip_text.get_rect(center=BTN_FLIP.center))
+
+    # Statistiques des coups (décalées à y=150 pour laisser de la place)
+    y_offset = 150
     if not stats:
         no_data = pygame.font.SysFont("Arial", 15).render(
             "Aucune partie trouvée", True, pygame.Color("#989795")
@@ -276,7 +289,7 @@ def draw_side_panel(screen, stats, selected_days):
         screen.blit(no_data, (BOARD_WIDTH + 20, y_offset))
     else:
         for i, (move_french_san, count, pct) in enumerate(stats):
-            if i >= 10:
+            if i >= 9:  # Sécurité hauteur max pour l'aide en bas
                 break
             stat_text = f"{i+1}.  {move_french_san}"
             value_text = f"{count}x  ({pct:.1f}%)"
@@ -307,7 +320,7 @@ def main():
 
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Coach Échecs - Notation Officielle FR")
+    pygame.display.set_caption("Coach Échecs - Option Pivot Échiquier")
 
     board_img, pieces_images = load_assets()
     board = chess.Board()
@@ -315,6 +328,7 @@ def main():
     selected_square = None
     dragged_pos = None
     selected_days = 7
+    board_flipped = False  # Par défaut, les blancs sont en bas
 
     all_moves = []
     move_index = 0
@@ -329,53 +343,56 @@ def main():
                 running = False
 
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_LEFT:
-                    if move_index > 0:
-                        move_index -= 1
-                        board = chess.Board()
-                        for m in all_moves[:move_index]:
-                            board.push(m)
-                        current_stats = get_opponent_move_stats(
-                            filtered_games, board.fen()
-                        )
+                if event.key == pygame.K_LEFT and move_index > 0:
+                    move_index -= 1
+                    board = chess.Board()
+                    for m in all_moves[:move_index]:
+                        board.push(m)
+                    current_stats = get_opponent_move_stats(filtered_games, board.fen())
 
-                elif event.key == pygame.K_RIGHT:
-                    if move_index < len(all_moves):
-                        move_index += 1
-                        board = chess.Board()
-                        for m in all_moves[:move_index]:
-                            board.push(m)
-                        current_stats = get_opponent_move_stats(
-                            filtered_games, board.fen()
-                        )
+                elif event.key == pygame.K_RIGHT and move_index < len(all_moves):
+                    move_index += 1
+                    board = chess.Board()
+                    for m in all_moves[:move_index]:
+                        board.push(m)
+                    current_stats = get_opponent_move_stats(filtered_games, board.fen())
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 pos = pygame.mouse.get_pos()
                 if pos[0] < BOARD_WIDTH:
+                    # CLIC SUR L'ÉCHIQUIER (Prise en compte de l'inversion)
                     col = pos[0] // SQ_SIZE
-                    row = 7 - (pos[1] // SQ_SIZE)
-                    square = chess.square(col, row)
+                    row = pos[1] // SQ_SIZE
+
+                    file = 7 - col if board_flipped else col
+                    rank = row if board_flipped else 7 - row
+
+                    square = chess.square(file, rank)
                     if board.piece_at(square):
                         selected_square = square
                 else:
-                    changed = False
-                    if BTN_1J.collidepoint(pos) and selected_days != 1:
-                        selected_days = 1
-                        changed = True
-                    elif BTN_7J.collidepoint(pos) and selected_days != 7:
-                        selected_days = 7
-                        changed = True
-                    elif BTN_30J.collidepoint(pos) and selected_days != 30:
-                        selected_days = 30
-                        changed = True
+                    # CLIC SUR LE PANNEAU LATÉRAL
+                    if BTN_FLIP.collidepoint(pos):
+                        board_flipped = not board_flipped
+                    else:
+                        changed = False
+                        if BTN_1J.collidepoint(pos) and selected_days != 1:
+                            selected_days = 1
+                            changed = True
+                        elif BTN_7J.collidepoint(pos) and selected_days != 7:
+                            selected_days = 7
+                            changed = True
+                        elif BTN_30J.collidepoint(pos) and selected_days != 30:
+                            selected_days = 30
+                            changed = True
 
-                    if changed:
-                        filtered_games = filter_games_by_days(
-                            all_loaded_games, selected_days
-                        )
-                        current_stats = get_opponent_move_stats(
-                            filtered_games, board.fen()
-                        )
+                        if changed:
+                            filtered_games = filter_games_by_days(
+                                all_loaded_games, selected_days
+                            )
+                            current_stats = get_opponent_move_stats(
+                                filtered_games, board.fen()
+                            )
 
             elif event.type == pygame.MOUSEMOTION and selected_square:
                 dragged_pos = pygame.mouse.get_pos()
@@ -384,8 +401,11 @@ def main():
                 pos = pygame.mouse.get_pos()
                 if pos[0] < BOARD_WIDTH:
                     col = pos[0] // SQ_SIZE
-                    row = 7 - (pos[1] // SQ_SIZE)
-                    target_square = chess.square(col, row)
+                    row = pos[1] // SQ_SIZE
+
+                    file = 7 - col if board_flipped else col
+                    rank = row if board_flipped else 7 - rank
+                    target_square = chess.square(file, rank)
 
                     move = chess.Move(selected_square, target_square)
                     if (
@@ -402,7 +422,6 @@ def main():
                         all_moves.append(move)
                         board.push(move)
                         move_index += 1
-
                         current_stats = get_opponent_move_stats(
                             filtered_games, board.fen()
                         )
@@ -411,8 +430,10 @@ def main():
                 dragged_pos = None
 
         # Rendu graphique
-        draw_board(screen, board_img)
-        draw_pieces(screen, board, pieces_images, selected_square, dragged_pos)
+        draw_board(screen, board_img, board_flipped)
+        draw_pieces(
+            screen, board, pieces_images, board_flipped, selected_square, dragged_pos
+        )
         draw_side_panel(screen, current_stats, selected_days)
 
         pygame.display.flip()
