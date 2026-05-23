@@ -32,6 +32,20 @@ PIECE_TO_NAME = {
 }
 
 
+# --- TRADUCTION DE LA NOTATION EN FRANÇAIS ---
+def to_french_san(eng_san_str):
+    """Traduit la notation algébrique anglaise (Nf3, Bxe4) en notation officielle française (Cf3, Fxe4)"""
+    mapping = {
+        "K": "R",  # King -> Roi
+        "Q": "D",  # Queen -> Dame
+        "R": "T",  # Rook -> Tour
+        "B": "F",  # Bishop -> Fou
+        "N": "C",  # Knight -> Cavalier
+    }
+    # On ne traduit que les lettres majuscules (les pièces), les minuscules restent les cases (a-h)
+    return "".join(mapping.get(char, char) for char in eng_san_str)
+
+
 # --- REQUISITIONS API ---
 def get_games_for_month(username, year, month):
     url = f"https://api.chess.com/pub/player/{username}/games/{year}/{month:02d}"
@@ -65,12 +79,35 @@ def get_opponent_move_stats(games, current_fen):
     board_target = chess.Board(current_fen)
     target_key = " ".join(board_target.fen().split()[:4])
 
+    # On détermine quelle couleur doit jouer dans la position actuelle étudiée
+    # Si board_target.turn == chess.WHITE, on cherche le coup des Blancs.
+    # Si board_target.turn == chess.BLACK, on cherche le coup des Noirs.
+    target_turn = board_target.turn
+
     move_counts = {}
     total_matches = 0
 
     for game in games:
         if "pgn" not in game:
             continue
+
+        # --- FILTRE ADVERSAIRE ---
+        # On regarde la couleur de l'utilisateur "giugiugiulio" dans cette partie
+        is_user_white = (
+            game.get("white", {}).get("username", "").lower() == USERNAME.lower()
+        )
+        is_user_black = (
+            game.get("black", {}).get("username", "").lower() == USERNAME.lower()
+        )
+
+        # Si le trait (le joueur qui doit jouer) correspond à notre propre couleur,
+        # alors ce n'est pas un coup adverse ! On passe à la partie suivante.
+        if target_turn == chess.WHITE and is_user_white:
+            continue
+        if target_turn == chess.BLACK and is_user_black:
+            continue
+        # -------------------------
+
         pgn_text = game["pgn"]
         board = chess.Board()
 
@@ -88,8 +125,10 @@ def get_opponent_move_stats(games, current_fen):
             if current_key == target_key:
                 try:
                     move = board.parse_san(move_san)
-                    move_uci = move.uci()
-                    move_counts[move_uci] = move_counts.get(move_uci, 0) + 1
+                    standard_san = board.san(move)
+                    french_san = to_french_san(standard_san)
+
+                    move_counts[french_san] = move_counts.get(french_san, 0) + 1
                     total_matches += 1
                     break
                 except ValueError:
@@ -212,7 +251,7 @@ def draw_side_panel(screen, stats, selected_days):
 
     title_font = pygame.font.SysFont("Arial", 16, bold=True)
     btn_font = pygame.font.SysFont("Arial", 14, bold=True)
-    text_font = pygame.font.SysFont("Arial", 15)
+    text_font = pygame.font.SysFont("Arial", 15, bold=True)
 
     title_surface = title_font.render("COACH - PÉRIODE", True, pygame.Color("#ffffff"))
     screen.blit(title_surface, (BOARD_WIDTH + 20, 20))
@@ -228,18 +267,18 @@ def draw_side_panel(screen, stats, selected_days):
         text_rect = btn_text.get_rect(center=rect.center)
         screen.blit(btn_text, text_rect)
 
-    # Statistiques des coups
+    # Statistiques des coups (Affichage nettoyé en SAN français)
     y_offset = 120
     if not stats:
-        no_data = text_font.render(
+        no_data = pygame.font.SysFont("Arial", 15).render(
             "Aucune partie trouvée", True, pygame.Color("#989795")
         )
         screen.blit(no_data, (BOARD_WIDTH + 20, y_offset))
     else:
-        for i, (move_uci, count, pct) in enumerate(stats):
+        for i, (move_french_san, count, pct) in enumerate(stats):
             if i >= 10:
                 break
-            stat_text = f"{i+1}. Coup:  {move_uci}"
+            stat_text = f"{i+1}.  {move_french_san}"
             value_text = f"{count}x  ({pct:.1f}%)"
 
             move_surf = text_font.render(stat_text, True, pygame.Color("#ffffff"))
@@ -268,7 +307,7 @@ def main():
 
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Coach Échecs - Historique Temporel")
+    pygame.display.set_caption("Coach Échecs - Notation Officielle FR")
 
     board_img, pieces_images = load_assets()
     board = chess.Board()
@@ -289,16 +328,13 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
 
-            # GESTION DES TOUCHES CLAVIER CORRIGÉE
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_LEFT:
                     if move_index > 0:
                         move_index -= 1
-                        # Reconstruction complète et propre depuis l'index 0
                         board = chess.Board()
                         for m in all_moves[:move_index]:
                             board.push(m)
-
                         current_stats = get_opponent_move_stats(
                             filtered_games, board.fen()
                         )
@@ -306,11 +342,9 @@ def main():
                 elif event.key == pygame.K_RIGHT:
                     if move_index < len(all_moves):
                         move_index += 1
-                        # Même méthode ici : reconstruction propre du futur
                         board = chess.Board()
                         for m in all_moves[:move_index]:
                             board.push(m)
-
                         current_stats = get_opponent_move_stats(
                             filtered_games, board.fen()
                         )
