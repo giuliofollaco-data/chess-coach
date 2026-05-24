@@ -34,3 +34,8 @@ Si tu souhaites passer à la vitesse supérieure et transformer ce script en un 
 
 * **Support multi-plateforme (Lichess) :** L'architecture actuelle du code sépare bien la récupération des données de la logique du jeu. Tu pourrais facilement ajouter une option dans ton `config.json` pour aller chercher également les parties sur **Lichess** via leur API publique (`[https://lichess.org/api](https://lichess.org/api)`), doublant ainsi ta base de données d'entraînement.
 * **Export en fichier PGN :** Ajouter un bouton ou un raccourci clavier (`Ctrl + S`) pour sauvegarder la variante que tu es en train d'analyser dans un fichier `.pgn` standard, afin de pouvoir la réimporter plus tard dans Chess.com ou dans un logiciel comme ChessBase.
+
+
+
+- Ajouter un son à chaque coup
+- Ajouter les légendes de lignes et colonnes
