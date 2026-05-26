@@ -77,10 +77,63 @@ def get_recent_games(username, days=30):
 
 
 # --- FILTRE LOCAL & STATS OPTIMISÉES ---
-def filter_games_by_days(games, days):
-    now = datetime.datetime.now()
-    cutoff_timestamp = (now - datetime.timedelta(days=days)).timestamp()
-    return [g for g in games if g.get("end_time", 0) >= cutoff_timestamp]
+def filter_games(games, days=None, target_date=None):
+    if target_date is not None:
+        filtered = []
+        for g in games:
+            end_time = g.get("end_time", 0)
+            if end_time:
+                g_date = datetime.date.fromtimestamp(end_time)
+                if g_date == target_date:
+                    filtered.append(g)
+        return filtered
+    elif days is not None:
+        now = datetime.datetime.now()
+        cutoff_timestamp = (now - datetime.timedelta(days=days)).timestamp()
+        return [g for g in games if g.get("end_time", 0) >= cutoff_timestamp]
+    return games
+
+
+def get_game_win_stats(games, username):
+    white_games = 0
+    white_wins = 0
+    black_games = 0
+    black_wins = 0
+
+    for game in games:
+        white_player = game.get("white", {})
+        black_player = game.get("black", {})
+
+        is_user_white = white_player.get("username", "").lower() == username.lower()
+        is_user_black = black_player.get("username", "").lower() == username.lower()
+
+        if is_user_white:
+            white_games += 1
+            if white_player.get("result", "") == "win":
+                white_wins += 1
+        elif is_user_black:
+            black_games += 1
+            if black_player.get("result", "") == "win":
+                black_wins += 1
+
+    white_win_pct = (white_wins / white_games * 100) if white_games > 0 else 0.0
+    black_win_pct = (black_wins / black_games * 100) if black_games > 0 else 0.0
+
+    total_games = white_games + black_games
+    total_wins = white_wins + black_wins
+    total_win_pct = (total_wins / total_games * 100) if total_games > 0 else 0.0
+
+    return {
+        "white_games": white_games,
+        "white_wins": white_wins,
+        "white_win_pct": white_win_pct,
+        "black_games": black_games,
+        "black_wins": black_wins,
+        "black_win_pct": black_win_pct,
+        "total_games": total_games,
+        "total_wins": total_wins,
+        "total_win_pct": total_win_pct,
+    }
 
 
 def get_opponent_move_stats(games, current_fen):
@@ -241,7 +294,9 @@ BTN_30J = pygame.Rect(BOARD_WIDTH + 165, 55, 65, 30)
 BTN_FLIP = pygame.Rect(BOARD_WIDTH + 15, 95, 215, 30)
 
 
-def draw_side_panel(screen, stats, selected_days):
+def draw_side_panel(
+    screen, stats, selected_days, selected_date=None, games_per_day=None, win_stats=None
+):
     pygame.draw.rect(
         screen,
         pygame.Color("#262522"),
@@ -259,7 +314,7 @@ def draw_side_panel(screen, stats, selected_days):
     btn_font = pygame.font.SysFont("Arial", 14, bold=True)
     text_font = pygame.font.SysFont("Arial", 15, bold=True)
 
-    title_surface = title_font.render("COACH - OPTIONS", True, pygame.Color("#ffffff"))
+    title_surface = title_font.render("OPTIONS", True, pygame.Color("#ffffff"))
     screen.blit(title_surface, (BOARD_WIDTH + 20, 20))
 
     buttons = [(BTN_1J, "1 J", 1), (BTN_7J, "7 J", 7), (BTN_30J, "30 J", 30)]
@@ -275,7 +330,151 @@ def draw_side_panel(screen, stats, selected_days):
     flip_text = btn_font.render("Tourner l'échiquier", True, pygame.Color("#ffffff"))
     screen.blit(flip_text, flip_text.get_rect(center=BTN_FLIP.center))
 
-    y_offset = 150
+    # --- MINI CALENDRIER INTERACTIF ---
+    cal_title_font = pygame.font.SysFont("Arial", 13, bold=True)
+    cal_day_font = pygame.font.SysFont("Arial", 11)
+    cal_header_font = pygame.font.SysFont("Arial", 11, bold=True)
+
+    cal_title = cal_title_font.render(
+        "CALENDRIER (30 derniers jours)", True, pygame.Color("#ffffff")
+    )
+    screen.blit(cal_title, (BOARD_WIDTH + 15, 135))
+
+    # En-têtes de colonnes (jours de la semaine en français)
+    headers = ["L", "M", "M", "J", "V", "S", "D"]
+    CALENDAR_X = BOARD_WIDTH + 48
+    GRID_START_Y = 168
+
+    for i, h in enumerate(headers):
+        h_surf = cal_header_font.render(h, True, pygame.Color("#7d7c7a"))
+        h_rect = h_surf.get_rect(center=(CALENDAR_X + i * 22 + 10, 158))
+        screen.blit(h_surf, h_rect)
+
+    # Calcul des jours à afficher
+    today = datetime.date.today()
+    start_date = today - datetime.timedelta(days=29)
+    start_monday = start_date - datetime.timedelta(days=start_date.weekday())
+    end_sunday = today + datetime.timedelta(days=6 - today.weekday())
+
+    curr = start_monday
+    while curr <= end_sunday:
+        col = curr.weekday()
+        row = (curr - start_monday).days // 7
+        x = CALENDAR_X + col * 22
+        y = GRID_START_Y + row * 22
+        rect = pygame.Rect(x, y, 20, 20)
+
+        is_in_range = start_date <= curr <= today
+
+        if is_in_range:
+            is_selected = selected_date == curr
+            is_today = curr == today
+
+            # Déterminer la couleur du fond du jour
+            if is_selected:
+                bg_color = pygame.Color("#81b64c")
+                text_color = pygame.Color("#ffffff")
+            elif is_today:
+                bg_color = pygame.Color("#403e3a")
+                text_color = pygame.Color("#ffffff")
+            else:
+                bg_color = pygame.Color("#312e2b")
+                text_color = pygame.Color("#c3c2c1")
+
+            pygame.draw.rect(screen, bg_color, rect, border_radius=3)
+
+            if is_today and not is_selected:
+                # Dessiner une bordure subtile pour aujourd'hui
+                pygame.draw.rect(
+                    screen, pygame.Color("#81b64c"), rect, width=1, border_radius=3
+                )
+
+            # Dessiner le numéro du jour
+            day_num_str = str(curr.day)
+            day_surf = cal_day_font.render(day_num_str, True, text_color)
+            screen.blit(day_surf, day_surf.get_rect(center=rect.center))
+
+            # S'il y a des parties ce jour-là, on dessine une pastille verte
+            if games_per_day and games_per_day.get(curr, 0) > 0:
+                dot_color = (
+                    pygame.Color("#ffffff") if is_selected else pygame.Color("#81b64c")
+                )
+                pygame.draw.circle(
+                    screen, dot_color, (rect.centerx, rect.bottom - 3), 2
+                )
+        else:
+            # Hors de la plage des 30 jours (jours de remplissage de la semaine)
+            day_num_str = str(curr.day)
+            day_surf = cal_day_font.render(day_num_str, True, pygame.Color("#403e3a"))
+            screen.blit(day_surf, day_surf.get_rect(center=rect.center))
+
+        curr += datetime.timedelta(days=1)
+
+    # --- STATS DE L'UTILISATEUR ---
+    stats_font = pygame.font.SysFont("Arial", 12)
+    stats_title_font = pygame.font.SysFont("Arial", 13, bold=True)
+
+    stats_title_surf = stats_title_font.render(
+        "MES STATS", True, pygame.Color("#ffffff")
+    )
+    screen.blit(stats_title_surf, (BOARD_WIDTH + 20, 310))
+
+    if win_stats:
+        # Total
+        pygame.draw.rect(
+            screen, pygame.Color("#81b64c"), pygame.Rect(BOARD_WIDTH + 20, 332, 10, 10)
+        )
+        pygame.draw.rect(
+            screen,
+            pygame.Color("#7d7c7a"),
+            pygame.Rect(BOARD_WIDTH + 20, 332, 10, 10),
+            width=1,
+        )
+        total_text = f"Total : {win_stats['total_games']} parties ({win_stats['total_win_pct']:.1f}% gains)"
+        total_surf = stats_font.render(total_text, True, pygame.Color("#c3c2c1"))
+        screen.blit(total_surf, (BOARD_WIDTH + 38, 330))
+
+        # Blancs
+        pygame.draw.rect(
+            screen, pygame.Color("#ffffff"), pygame.Rect(BOARD_WIDTH + 20, 350, 10, 10)
+        )
+        pygame.draw.rect(
+            screen,
+            pygame.Color("#7d7c7a"),
+            pygame.Rect(BOARD_WIDTH + 20, 350, 10, 10),
+            width=1,
+        )
+        white_text = f"Blancs : {win_stats['white_games']} parties ({win_stats['white_win_pct']:.1f}% gains)"
+        white_surf = stats_font.render(white_text, True, pygame.Color("#c3c2c1"))
+        screen.blit(white_surf, (BOARD_WIDTH + 38, 348))
+
+        # Noirs
+        pygame.draw.rect(
+            screen, pygame.Color("#312e2b"), pygame.Rect(BOARD_WIDTH + 20, 368, 10, 10)
+        )
+        pygame.draw.rect(
+            screen,
+            pygame.Color("#7d7c7a"),
+            pygame.Rect(BOARD_WIDTH + 20, 368, 10, 10),
+            width=1,
+        )
+        black_text = f"Noirs : {win_stats['black_games']} parties ({win_stats['black_win_pct']:.1f}% gains)"
+        black_surf = stats_font.render(black_text, True, pygame.Color("#c3c2c1"))
+        screen.blit(black_surf, (BOARD_WIDTH + 38, 366))
+
+    # --- AFFICHAGE DES STATS ---
+    y_offset = 413
+
+    # Titre des stats
+    stats_title_text = "STATS OPPOSE"
+    if selected_date:
+        stats_title_text += f" ({selected_date.strftime('%d/%m')})"
+    elif selected_days:
+        stats_title_text += f" ({selected_days} J)"
+
+    stats_title = title_font.render(stats_title_text, True, pygame.Color("#ffffff"))
+    screen.blit(stats_title, (BOARD_WIDTH + 20, y_offset - 25))
+
     if not stats:
         no_data = pygame.font.SysFont("Arial", 15).render(
             "Aucune partie trouvée", True, pygame.Color("#989795")
@@ -283,7 +482,9 @@ def draw_side_panel(screen, stats, selected_days):
         screen.blit(no_data, (BOARD_WIDTH + 20, y_offset))
     else:
         for i, (move_french_san, count, pct) in enumerate(stats):
-            if i >= 9:
+            if (
+                i >= 5
+            ):  # Max 5 stats pour éviter de déborder avec les nouvelles stats utilisateur
                 break
             stat_text = f"{i+1}.  {move_french_san}"
             value_text = f"{count}x  ({pct:.1f}%)"
@@ -297,13 +498,13 @@ def draw_side_panel(screen, stats, selected_days):
 
             screen.blit(move_surf, (BOARD_WIDTH + 20, y_offset))
             screen.blit(val_surf, (BOARD_WIDTH + 140, y_offset))
-            y_offset += 38
+            y_offset += 28
 
     help_font = pygame.font.SysFont("Arial", 13, italic=True)
     help_surf = help_font.render(
         "Navigation : Flèches ◄  ►", True, pygame.Color("#7d7c7a")
     )
-    screen.blit(help_surf, (BOARD_WIDTH + 45, BOARD_HEIGHT - 35))
+    screen.blit(help_surf, (BOARD_WIDTH + 45, BOARD_HEIGHT - 30))
 
 
 # --- APPLICATION PRINCIPALE ---
@@ -322,12 +523,24 @@ def main():
     selected_square = None
     dragged_pos = None
     selected_days = 7
+    selected_date = None
     board_flipped = False
 
     all_moves = []
     move_index = 0
 
-    filtered_games = filter_games_by_days(all_loaded_games, selected_days)
+    # Dictionnaire de parties par jour pour l'affichage des pastilles vertes dans le calendrier
+    games_per_day = {}
+    for g in all_loaded_games:
+        end_time = g.get("end_time", 0)
+        if end_time:
+            g_date = datetime.date.fromtimestamp(end_time)
+            games_per_day[g_date] = games_per_day.get(g_date, 0) + 1
+
+    filtered_games = filter_games(
+        all_loaded_games, days=selected_days, target_date=selected_date
+    )
+    win_stats = get_game_win_stats(filtered_games, USERNAME)
     current_stats = get_opponent_move_stats(filtered_games, board.fen())
 
     running = True
@@ -370,18 +583,61 @@ def main():
                         changed = False
                         if BTN_1J.collidepoint(pos) and selected_days != 1:
                             selected_days = 1
+                            selected_date = None
                             changed = True
                         elif BTN_7J.collidepoint(pos) and selected_days != 7:
                             selected_days = 7
+                            selected_date = None
                             changed = True
                         elif BTN_30J.collidepoint(pos) and selected_days != 30:
                             selected_days = 30
+                            selected_date = None
                             changed = True
+                        else:
+                            # Clic sur le calendrier
+                            today = datetime.date.today()
+                            start_date = today - datetime.timedelta(days=29)
+                            start_monday = start_date - datetime.timedelta(
+                                days=start_date.weekday()
+                            )
+                            end_sunday = today + datetime.timedelta(
+                                days=6 - today.weekday()
+                            )
+
+                            CALENDAR_X = BOARD_WIDTH + 48
+                            GRID_START_Y = 168
+
+                            curr = start_monday
+                            while curr <= end_sunday:
+                                col = curr.weekday()
+                                row = (curr - start_monday).days // 7
+                                x = CALENDAR_X + col * 22
+                                y = GRID_START_Y + row * 22
+                                rect = pygame.Rect(x, y, 20, 20)
+
+                                if (
+                                    rect.collidepoint(pos)
+                                    and start_date <= curr <= today
+                                ):
+                                    if selected_date == curr:
+                                        selected_date = None
+                                        selected_days = (
+                                            7  # Par défaut, revient à 7 jours
+                                        )
+                                    else:
+                                        selected_date = curr
+                                        selected_days = None
+                                    changed = True
+                                    break
+                                curr += datetime.timedelta(days=1)
 
                         if changed:
-                            filtered_games = filter_games_by_days(
-                                all_loaded_games, selected_days
+                            filtered_games = filter_games(
+                                all_loaded_games,
+                                days=selected_days,
+                                target_date=selected_date,
                             )
+                            win_stats = get_game_win_stats(filtered_games, USERNAME)
                             current_stats = get_opponent_move_stats(
                                 filtered_games, board.fen()
                             )
@@ -427,7 +683,14 @@ def main():
         draw_pieces(
             screen, board, pieces_images, board_flipped, selected_square, dragged_pos
         )
-        draw_side_panel(screen, current_stats, selected_days)
+        draw_side_panel(
+            screen,
+            current_stats,
+            selected_days,
+            selected_date,
+            games_per_day,
+            win_stats,
+        )
 
         pygame.display.flip()
 
