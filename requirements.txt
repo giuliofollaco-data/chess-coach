@@ -1,3 +1,4 @@
-pygame
+flask
+flask-cors
 python-chess
 requests

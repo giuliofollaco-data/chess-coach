@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Coach Échecs - Multi-perspectives</title>
+    
+    <!-- Styles Chessground v8 (UMD, expose window.Chessground) -->
+    <link rel="stylesheet" href="https://unpkg.com/chessground@8.4.0/assets/chessground.base.css">
+    <link rel="stylesheet" href="https://unpkg.com/chessground@8.4.0/assets/chessground.brown.css">
+    
+    <style>
+        body {
+            background-color: #161512;
+            color: white;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        .container {
+            display: flex;
+            gap: 30px;
+            background-color: #1a1917;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+        }
+        /* Dimensions de l'échiquier Chessground */
+        #chess-board {
+            width: 600px;
+            height: 600px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+        }
+        /* Style du panneau latéral */
+        #side-panel {
+            width: 320px;
+            background-color: #262522;
+            padding: 20px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+            overflow-y: auto;
+            max-height: 600px;
+        }
+        
+        .panel-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #ffffff;
+            margin-top: 0;
+            margin-bottom: 15px;
+            letter-spacing: 0.5px;
+        }
+        
+        /* Filtres temporels */
+        .time-filters {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .time-btn {
+            flex: 1;
+            background-color: #312e2b;
+            color: #989795;
+            border: none;
+            padding: 8px 0;
+            font-size: 13px;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s, color 0.2s;
+        }
+        .time-btn:hover {
+            background-color: #403e3a;
+            color: white;
+        }
+        .time-btn.active {
+            background-color: #81b64c;
+            color: white;
+        }
+        
+        /* Boutons d'action */
+        .action-btn {
+            width: 100%;
+            background-color: #312e2b;
+            color: white;
+            border: none;
+            padding: 10px 0;
+            font-size: 13px;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 20px;
+            transition: background-color 0.2s;
+        }
+        .action-btn:hover {
+            background-color: #403e3a;
+        }
+        
+        /* Titres de section */
+        .section-title {
+            font-size: 13px;
+            font-weight: bold;
+            color: #ffffff;
+            margin-top: 0;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+        
+        .stats-section {
+            margin-bottom: 20px;
+        }
+
+        /* Grille du calendrier */
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+            margin-bottom: 20px;
+        }
+        .cal-header {
+            font-size: 11px;
+            font-weight: bold;
+            color: #7d7c7a;
+            text-align: center;
+            padding-bottom: 4px;
+        }
+        .cal-cell {
+            background-color: #312e2b;
+            color: #c3c2c1;
+            font-size: 11px;
+            height: 24px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            border-radius: 3px;
+            cursor: pointer;
+            position: relative;
+            user-select: none;
+            transition: background-color 0.2s, color 0.2s;
+        }
+        .cal-cell:hover.in-range {
+            background-color: #403e3a;
+            color: white;
+        }
+        .cal-cell.today {
+            border: 1px solid #81b64c;
+            color: white;
+        }
+        .cal-cell.selected {
+            background-color: #81b64c !important;
+            color: white !important;
+        }
+        .cal-cell.out-of-range {
+            color: #403e3a;
+            cursor: default;
+        }
+        .cal-dot {
+            width: 4px;
+            height: 4px;
+            background-color: #81b64c;
+            border-radius: 50%;
+            position: absolute;
+            bottom: 2px;
+        }
+        .selected-dot {
+            background-color: white !important;
+        }
+        
+        /* Stats badges */
+        .stats-badge-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .stat-badge-row {
+            display: flex;
+            align-items: center;
+            font-size: 12px;
+            color: #c3c2c1;
+        }
+        .color-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            margin-right: 8px;
+            border: 1px solid #7d7c7a;
+        }
+        .color-indicator.total {
+            background-color: #81b64c;
+        }
+        .color-indicator.white {
+            background-color: #ffffff;
+        }
+        .color-indicator.black {
+            background-color: #312e2b;
+        }
+        .win-pct {
+            font-weight: bold;
+            color: white;
+            margin-left: auto;
+        }
+
+        /* Liste des statistiques opposé */
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            padding: 6px 0;
+            border-bottom: 1px solid #312e2b;
+            font-size: 14px;
+        }
+        .stat-item.popular {
+            background-color: rgba(129, 182, 76, 0.1);
+            border-left: 3px solid #81b64c;
+            padding-left: 8px;
+            border-radius: 2px;
+        }
+        .move-name { font-weight: bold; }
+        .move-pct { color: #81b64c; font-weight: bold; }
+        .move-count { color: #989795; margin-right: 6px; }
+        
+        .help-text {
+            font-size: 12px;
+            color: #7d7c7a;
+            font-style: italic;
+            text-align: center;
+            margin-top: auto;
+            padding-top: 15px;
+        }
+        
+        /* Personnalisation des flèches en jaune style Chess.com */
+        .cg-wrap svg g {
+            fill: #f7c04a !important;
+            stroke: #f7c04a !important;
+            opacity: 0.75 !important;
+        }
+        .cg-wrap svg marker {
+            fill: #f7c04a !important;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="chess-board" class="brown"></div>
+
+    <div id="side-panel">
+        <h1 class="panel-title">OPTIONS</h1>
+        
+        <div class="time-filters">
+            <button class="time-btn" id="btn-1j" onclick="selectDays(1)">1 J</button>
+            <button class="time-btn active" id="btn-7j" onclick="selectDays(7)">7 J</button>
+            <button class="time-btn" id="btn-30j" onclick="selectDays(30)">30 J</button>
+        </div>
+
+        <button class="action-btn" id="btn-flip" onclick="flipBoard()">Tourner l'échiquier</button>
+
+        <div class="stats-section">
+            <h3 class="section-title">CALENDRIER (30 derniers jours)</h3>
+            <div id="calendar-grid" class="calendar-grid"></div>
+        </div>
+
+        <div class="stats-section">
+            <h3 class="section-title">MES STATS</h3>
+            <div id="user-stats-container" class="stats-badge-container">
+                <!-- Rempli par JS -->
+            </div>
+        </div>
+
+        <div class="stats-section">
+            <h3 class="section-title" id="opponent-stats-title">STATS OPPOSÉ (7 J)</h3>
+            <div id="stats-container">Chargement des données...</div>
+        </div>
+
+        <div class="help-text">Navigation : Flèches ◄  ►</div>
+    </div>
+</div>
+
+<!-- Scripts Chessground v8 (UMD global) et Chess.js -->
+<script src="https://unpkg.com/chessground@8.4.0/dist/chessground.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+
+<script>
+    const boardElement = document.getElementById('chess-board');
+    const statsContainer = document.getElementById('stats-container');
+    const userStatsContainer = document.getElementById('user-stats-container');
+    const opponentStatsTitle = document.getElementById('opponent-stats-title');
+    
+    let ground;
+    let chessGame = new Chess(); // Gestion de l'arbre logique et FEN
+    let fenHistory = [chessGame.fen()];
+    let currentHistoryIndex = 0;
+
+    let selectedDays = 7;
+    let selectedDate = null;
+    let gamesPerDay = {};
+
+    // 1. Initialiser le serveur Python
+    fetch('http://127.0.0.1:5000/api/init')
+        .then(res => res.json())
+        .then(data => {
+            console.log(`${data.games_count} parties chargées.`);
+            
+            // Récupérer le calendrier
+            fetch('http://127.0.0.1:5000/api/games-by-day')
+                .then(res => res.json())
+                .then(calData => {
+                    gamesPerDay = calData;
+                    
+                    // Initialiser Chessground et charger les stats initiales
+                    initChessground();
+                    updateStats();
+                });
+        })
+        .catch(err => {
+            statsContainer.innerHTML = "Erreur de connexion avec le serveur API.";
+        });
+
+    // 2. Configuration et initialisation de Chessground
+    function initChessground() {
+        const config = {
+            orientation: 'white',
+            coordinates: true,
+            fen: chessGame.fen(),
+            movable: {
+                color: 'both',
+                free: false, // Force le respect des règles des échecs !
+                dests: getLegalMoves()
+            },
+            drawable: {
+                enabled: true,
+                eraseOnClick: true
+            },
+            events: {
+                move: (orig, dest) => {
+                    // Valider et enregistrer le coup dans chess.js
+                    const move = chessGame.move({
+                        from: orig,
+                        to: dest,
+                        promotion: 'q' // Promotion reine automatique pour simplifier
+                    });
+                    
+                    if (move) {
+                        // Nettoyer l'historique si on était retourné en arrière
+                        fenHistory = fenHistory.slice(0, currentHistoryIndex + 1);
+                        fenHistory.push(chessGame.fen());
+                        currentHistoryIndex = fenHistory.length - 1;
+
+                        // Mettre à jour Chessground
+                        ground.set({
+                            fen: chessGame.fen(),
+                            movable: { dests: getLegalMoves() }
+                        });
+                        
+                        updateStats();
+                    }
+                }
+            }
+        };
+        ground = Chessground(boardElement, config);
+    }
+
+    // Calcule la liste des coups légaux pour Chessground
+    function getLegalMoves() {
+        const dests = new Map();
+        chessGame.SQUARES.forEach(s => {
+            const ms = chessGame.moves({ square: s, verbose: true });
+            if (ms.length > 0) {
+                dests.set(s, ms.map(m => m.to));
+            }
+        });
+        return dests;
+    }
+
+    // Inverse le sens de l'échiquier
+    function flipBoard() {
+        const currentOrientation = ground.state.orientation;
+        ground.set({
+            orientation: currentOrientation === 'white' ? 'black' : 'white'
+        });
+    }
+
+    // Gestion de la sélection temporelle
+    function selectDays(days) {
+        selectedDays = days;
+        selectedDate = null;
+        
+        document.querySelectorAll('.time-btn').forEach(btn => btn.classList.remove('active'));
+        document.getElementById(`btn-${days}j`).classList.add('active');
+        
+        updateStats();
+    }
+
+    function selectDate(dateStr) {
+        selectedDate = dateStr;
+        selectedDays = null;
+
+        document.querySelectorAll('.time-btn').forEach(btn => btn.classList.remove('active'));
+        
+        updateStats();
+    }
+
+    // Centralise la récupération des statistiques (win-stats et opponent-stats)
+    function updateStats() {
+        const currentFen = chessGame.fen();
+        
+        // Mettre à jour le titre du panneau de droite
+        let titleText = "STATS OPPOSÉ";
+        if (selectedDate) {
+            const parts = selectedDate.split('-');
+            titleText += ` (${parts[2]}/${parts[1]})`;
+        } else {
+            titleText += ` (${selectedDays} J)`;
+        }
+        opponentStatsTitle.innerText = titleText;
+
+        // Requête statistiques coups
+        fetch('http://127.0.0.1:5000/api/stats', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fen: currentFen, days: selectedDays, date: selectedDate })
+        })
+        .then(res => res.json())
+        .then(data => {
+            renderOpponentStats(data.stats);
+        })
+        .catch(err => {
+            statsContainer.innerHTML = "Erreur de connexion API.";
+        });
+
+        // Requête statistiques victoires
+        fetch('http://127.0.0.1:5000/api/win-stats', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ days: selectedDays, date: selectedDate })
+        })
+        .then(res => res.json())
+        .then(data => {
+            renderUserStats(data);
+        });
+
+        // Redessiner le calendrier
+        renderCalendar();
+    }
+
+    // Affiche le calendrier
+    function renderCalendar() {
+        const calendarContainer = document.getElementById('calendar-grid');
+        calendarContainer.innerHTML = '';
+        
+        // En-têtes
+        const headers = ["L", "M", "M", "J", "V", "S", "D"];
+        headers.forEach(h => {
+            const hDiv = document.createElement('div');
+            hDiv.className = 'cal-header';
+            hDiv.innerText = h;
+            calendarContainer.appendChild(hDiv);
+        });
+
+        const today = new Date();
+        const startDate = new Date();
+        startDate.setDate(today.getDate() - 29);
+        
+        const startMonday = new Date(startDate);
+        const dayOfWeek = startMonday.getDay();
+        const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+        startMonday.setDate(startMonday.getDate() + diffToMonday);
+
+        const endSunday = new Date(today);
+        const todayDayOfWeek = endSunday.getDay();
+        const diffToSunday = todayDayOfWeek === 0 ? 0 : 7 - todayDayOfWeek;
+        endSunday.setDate(endSunday.getDate() + diffToSunday);
+
+        const formatDate = (d) => {
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        };
+
+        const todayStr = formatDate(today);
+        const startDateStr = formatDate(startDate);
+
+        let curr = new Date(startMonday);
+        while (curr <= endSunday) {
+            const dateStr = formatDate(curr);
+            const isInRange = curr >= startDate && curr <= today;
+            
+            const cell = document.createElement('div');
+            cell.className = 'cal-cell';
+            cell.innerText = curr.getDate();
+
+            if (isInRange) {
+                cell.classList.add('in-range');
+                const isSelected = selectedDate === dateStr;
+                const isToday = todayStr === dateStr;
+
+                if (isSelected) cell.classList.add('selected');
+                else if (isToday) cell.classList.add('today');
+
+                const gamesCount = gamesPerDay[dateStr] || 0;
+                if (gamesCount > 0) {
+                    const dot = document.createElement('div');
+                    dot.className = 'cal-dot';
+                    if (isSelected) dot.classList.add('selected-dot');
+                    cell.appendChild(dot);
+                }
+
+                cell.addEventListener('click', () => {
+                    if (selectedDate === dateStr) {
+                        selectDays(7); // Retour par défaut
+                    } else {
+                        selectDate(dateStr);
+                    }
+                });
+            } else {
+                cell.classList.add('out-of-range');
+            }
+
+            calendarContainer.appendChild(cell);
+            curr.setDate(curr.getDate() + 1);
+        }
+    }
+
+    // Affiche mes stats de gains
+    function renderUserStats(data) {
+        userStatsContainer.innerHTML = `
+            <div class="stat-badge-row">
+                <div class="color-indicator total"></div>
+                <span>Total : ${data.total_games} parties</span>
+                <span class="win-pct">${data.total_win_pct}% gains</span>
+            </div>
+            <div class="stat-badge-row">
+                <div class="color-indicator white"></div>
+                <span>Blancs : ${data.white_games} parties</span>
+                <span class="win-pct">${data.white_win_pct}% gains</span>
+            </div>
+            <div class="stat-badge-row">
+                <div class="color-indicator black"></div>
+                <span>Noirs : ${data.black_games} parties</span>
+                <span class="win-pct">${data.black_win_pct}% gains</span>
+            </div>
+        `;
+    }
+
+    // Affiche les stats des coups adverses
+    function renderOpponentStats(stats) {
+        if (!stats || stats.length === 0) {
+            statsContainer.innerHTML = '<div style="color: #989795; font-size: 14px;">Aucune partie trouvée</div>';
+            return;
+        }
+        
+        let html = "";
+        stats.slice(0, 5).forEach((item, index) => {
+            const isPopular = index === 0;
+            html += `
+                <div class="stat-item ${isPopular ? 'popular' : ''}">
+                    <span class="move-name">${index + 1}. ${item.move}</span>
+                    <span>
+                        <span class="move-count">${item.count}x</span> 
+                        <span class="move-pct">(${item.pct}%)</span>
+                    </span>
+                </div>
+            `;
+        });
+        statsContainer.innerHTML = html;
+    }
+
+    // 3. Navigation clavier (Historique)
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'ArrowLeft' && currentHistoryIndex > 0) {
+            currentHistoryIndex--;
+            const prevFen = fenHistory[currentHistoryIndex];
+            chessGame.load(prevFen);
+            
+            ground.set({
+                fen: prevFen,
+                movable: { dests: getLegalMoves() }
+            });
+            updateStats();
+            
+        } else if (event.key === 'ArrowRight' && currentHistoryIndex < fenHistory.length - 1) {
+            currentHistoryIndex++;
+            const nextFen = fenHistory[currentHistoryIndex];
+            chessGame.load(nextFen);
+            
+            ground.set({
+                fen: nextFen,
+                movable: { dests: getLegalMoves() }
+            });
+            updateStats();
+        }
+    });
+</script>
+</body>
+</html>
